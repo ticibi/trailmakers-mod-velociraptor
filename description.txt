@@ -1,0 +1,13 @@
+
+A simple UI dashboard with toggleable readouts for:
+ - world position
+ - altitude
+ - heading
+ - distance
+ - speed
+ - velocity vector
+ - vertical speed
+ - linear acceleration G force
+ - stopwatch
+
+Suggestions are welcomed
