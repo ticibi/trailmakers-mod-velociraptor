@@ -133,7 +133,6 @@ end
 
 function addUiAndHotkeysForPlayer(playerId)
     mainPage(playerId)
-    --tm.input.RegisterFunctionToKeyDownCallback(playerId, "toggleTimer", "t")
 end
 
 function mainPage(id)
