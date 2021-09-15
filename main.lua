@@ -1,4 +1,6 @@
--- developed by dinoman 2021
+-- Velociraptor Mod
+-- by dinoman
+-- 2021
 
 local playerDataTable = {}
 local G = 9.8
@@ -81,8 +83,9 @@ function update()
     for k, player in pairs(playerList) do
         local playerId = player.playerId
         local playerData = playerDataTable[playerId]
+        
         runCalculations(playerId)
-
+        
         if playerData.time.globalTime > 10 then
             updateTimers(playerId)
         end
