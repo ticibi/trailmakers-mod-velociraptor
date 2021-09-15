@@ -1,7 +1,6 @@
 -- developed by dinoman 2021
 
 local playerDataTable = {}
-
 local G = 9.8
 local activeIcon = "☒"
 local inactiveIcon = "☐"
@@ -139,7 +138,6 @@ function mainPage(id)
     local states = playerData.ui.states
     local hidden = playerData.ui.hidden
     tm.playerUI.ClearUI(id)
-
     if states[1] then tm.playerUI.AddUILabel(id, "_position", 0) end
     if states[2] then tm.playerUI.AddUILabel(id, "_altitude", 0) end
     if states[3] then tm.playerUI.AddUILabel(id, "_heading", 0) end
@@ -150,20 +148,20 @@ function mainPage(id)
     if states[8] then tm.playerUI.AddUILabel(id, "_gForce", 0) end
     if states[9] then tm.playerUI.AddUILabel(id, "_timer", "start timer") end
     if states[9] then tm.playerUI.AddUIButton(id, "toggleTimer", "START", onButtonToggleTimer) end
-    if not hidden then tm.playerUI.AddUIButton(id, "help", "Help", helpPage) end
-    if not hidden then tm.playerUI.AddUIButton(id, "settings", "settings", settingsPage) end
-    if not hidden then tm.playerUI.AddUIButton(id, "_rest_distance", "reset distance", onResetOdometer) end
-    if not hidden then tm.playerUI.AddUILabel(id, "_global", "uptime: " .. 0 .. "s") end
-    if not hidden then tm.playerUI.AddUILabel(id, "_delta", "delta: " .. 0) end
-    if not hidden then tm.playerUI.AddUILabel(id, "credits", "developed by dinoman") end
-
+    if not hidden then 
+        tm.playerUI.AddUIButton(id, "help", "Help", helpPage)
+        tm.playerUI.AddUIButton(id, "settings", "settings", settingsPage)
+        tm.playerUI.AddUIButton(id, "_rest_distance", "reset distance", onResetOdometer)
+        tm.playerUI.AddUILabel(id, "_global", "uptime: " .. 0 .. "s")
+        tm.playerUI.AddUILabel(id, "_delta", "delta: " .. 0)
+        tm.playerUI.AddUILabel(id, "credits", "developed by dinoman")
+    end
     tm.playerUI.AddUIButton(id, "hide", "Hide", onHideUI)
 end
 
 function helpPage(callbackData)
     local id = callbackData.playerId
     tm.playerUI.ClearUI(id)
-
     tm.playerUI.AddUILabel(id, "help_title", "Help")
     tm.playerUI.AddUIButton(id, "help_back", " << Back", onReturnToMainMenu, nil)
     tm.playerUI.AddUILabel(id, "help_1", " -- position")
