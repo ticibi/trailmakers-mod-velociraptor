@@ -7,17 +7,6 @@ local G = 9.8
 local R = 10
 local activeIcon = "☒"
 local inactiveIcon = "☐"
-local meters = {
-    "position",
-    "altitude",
-    "heading",
-    "distance",
-    "speed",
-    "velocity",
-    "vSpeed",
-    "gForce",
-    "timer",
-}
 
 function AddPlayerData(playerId)
     playerDataTable[playerId] = {
@@ -41,14 +30,10 @@ function AddPlayerData(playerId)
         lastSpeed = 0,
         vSpeed = 0,
         gForce = 0,
-        alt = 0,
         altitudeOffset = 300,
         pos = 0,
         lastPos = tm.vector3.Create(),
-        v = 0,
-        dist = 0,
         totalDist = 0,
-        fastest = 0,
         time = {
             globalTime = 0,
             localTime = 0,
