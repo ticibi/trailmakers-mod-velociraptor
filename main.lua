@@ -1,12 +1,15 @@
--- Velociraptor Mod
--- by dinoman
--- 2021
+-- Velociraptor Mod for Trailmakers, ticibi 2022
+-- name: Velociraptor
+-- author: Thomas Bresee
+-- description: 
 
 local playerDataTable = {}
 local G = 9.8
 local R = 10
-local activeIcon = "☒"
-local inactiveIcon = "☐"
+local Icons = {
+    enabled = "☒",
+    disabled = "☐",
+}
 
 function AddPlayerData(playerId)
     playerDataTable[playerId] = {
@@ -150,7 +153,13 @@ function HomePage(playerId)
         end
     end
     Button(playerId, "settings", "toggle readouts", SettingsPage)
+    Button(playerId, "reset", "reset", OnReset)
     --Button(playerId, "help", "how to read", HelpPage)
+end
+
+function OnReset(callback)
+    local playerData = playerDataTable[callback.playerId]
+    playerData.distance = 0
 end
 
 function HelpPage(playerId)
@@ -179,9 +188,9 @@ end
 
 function CheckActive(state)
     if state then
-        return activeIcon
+        return Icons.enabled
     else
-        return inactiveIcon
+        return Icons.disabled
     end
 end
 
@@ -245,12 +254,16 @@ function TestRunCalculations(playerId)
     local playerData = playerDataTable[playerId]
     local speed = 0
     local playerPos = GetPlayerPos(playerId)
-    if GetStateValue(playerId, "speed") then
+    if GetStateValue(playerId, "speed") or GetStateValue(playerId, "distance") then
         playerData.pos = playerPos
         speed = CalculateSpeed(playerData.lastPos, playerPos)
+        local distance = CalculateDeltaDistance(playerPos, playerData.lastPos)
+        local newDistance = playerData.distance + distance
+        playerData.distance = newDistance
         playerData.lastPos = playerPos
         local mph = mpsToMph(speed)
         local kph = mpsToKph(speed)
+        SetValue(playerId, "distance", "distance: "..FormatDistance(playerData.distance))
         SetValue(playerId, "speed", "speed: "..FormatSpeed(mph, kph, speed))
     end
     if GetStateValue(playerId, "gforce") then
@@ -263,19 +276,13 @@ function TestRunCalculations(playerId)
         playerData.heading = heading
         SetValue(playerId, "heading", "heading: "..math.floor(heading))
     end
-    if GetStateValue(playerId, "distance") then
-        local distance = CalculateDeltaDistance(playerPos, playerData.lastPos)
-        local newDistance = playerData.distance + distance
-        playerData.lastPos = playerPos
-        SetValue(playerId, "distance", "distance: "..FormatDistance(newDistance))
-    end
     if GetStateValue(playerId, "velocity") then
         local velocity = CalculateVelocity(speed, playerPos, playerData.lastPos)
         playerData.velocity = velocity
         SetValue(playerId, "velocity", "velocity: "..FormatVector(velocity))
     end
     if GetStateValue(playerId, "altitude") then
-        SetValue(playerId, "altitude", "altitude: "..math.floor(playerPos.y + playerData.altitudeOffset).."m")
+        SetValue(playerId, "altitude", "altitude: "..math.ceil(playerPos.y - playerData.altitudeOffset).."m")
     end
     if GetStateValue(playerId, "position") then
         SetValue(playerId, "position", "position: "..FormatVector(playerPos))
