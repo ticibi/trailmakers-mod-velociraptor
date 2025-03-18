@@ -1,353 +1,267 @@
 -- Velociraptor Mod for Trailmakers, ticibi 2022
 -- name: Velociraptor
--- author: Thomas Bresee
--- description: 
+-- author: ticibi
+-- version: 2.0 (2025 update)
+-- description: Enhanced vehicle telemetry display
 
-local playerDataTable = {}
-local G = 9.8
-local R = 10
-local Icons = {
-    enabled = "☒",
-    disabled = "☐",
+local Constants = {
+    GRAVITY = 9.8,          -- m/s²
+    UPDATE_RATE = 10,       -- Updates per second
+    ALTITUDE_DEFAULT = 300  -- Default altitude offset in meters
 }
 
-function AddPlayerData(playerId)
-    playerDataTable[playerId] = {
+local Icons = {
+    enabled = "☒",
+    disabled = "☐"
+}
+
+local playerDataTable = {}
+
+-- Player Data Management
+local function initializePlayerData(playerId)
+    return {
         states = {
-            {key="position", value=true},
-            {key="altitude", value=true},
-            {key="heading", value=true},
-            {key="distance", value=true},
-            {key="speed", value=true},
-            {key="velocity", value=false},
-            {key="vspeed", value=false},
-            {key="gforce", value=true},
-            {key="timer", value=false},
-            {key="delta", value=true}
+            position = true, altitude = true, heading = true,
+            distance = true, speed = true, velocity = false,
+            vspeed = false, gforce = true, timer = false,
+            delta = true
         },
-        heading = 0,
-        distance = 0,
-        velocity = 0,
-        hide = false,
-        speed = 0,
-        lastSpeed = 0,
-        vSpeed = 0,
-        gForce = 0,
-        altitudeOffset = 300,
-        pos = 0,
-        lastPos = tm.vector3.Create(),
-        totalDist = 0,
+        metrics = {
+            heading = 0, distance = 0, velocity = tm.vector3.Create(),
+            speed = 0, lastSpeed = 0, vSpeed = 0, gForce = 0,
+            totalDist = 0
+        },
+        position = {
+            current = tm.vector3.Create(),
+            last = tm.vector3.Create()
+        },
         time = {
-            globalTime = 0,
+            global = 0,
             localTime = 0,
-            localLastTime = 0,
+            localLast = 0
         },
         timer = {
-            currentTime = 0,
-            lastTime = 0,
-            startTime = 0,
-            stopTime = 0,
-            isRunning = false,
+            current = 0,
+            last = 0,
+            start = 0,
+            stop = 0,
+            running = false
         },
+        settings = {
+            altitudeOffset = Constants.ALTITUDE_DEFAULT,
+            hidden = false
+        }
     }
 end
 
-function onPlayerJoined(player)
-    AddPlayerData(player.playerId)
-    HomePage(player.playerId)
-end
+-- Event Handlers
+tm.players.OnPlayerJoined.add(function(player)
+    playerDataTable[player.playerId] = initializePlayerData(player.playerId)
+    createHomePage(player.playerId)
+end)
 
-function onPlayerLeft(player)
-    local playerData = playerDataTable[player.playerId]
-    playerData.totalDist = playerData.totalDist + playerData.dist
-end
+tm.players.OnPlayerLeft.add(function(player)
+    local data = playerDataTable[player.playerId]
+    if data then
+        data.metrics.totalDist = data.metrics.totalDist + data.metrics.distance
+        playerDataTable[player.playerId] = nil
+    end
+end)
 
-tm.players.OnPlayerJoined.add(onPlayerJoined)
-tm.players.OnPlayerLeft.add(onPlayerLeft)
-
+-- Main Update Loop
 function update()
     local players = tm.players.CurrentPlayers()
-    for i, player in ipairs(players) do
-        TestRunCalculations(player.playerId)
-        if playerDataTable[player.playerId].time.globalTime > 10 then
-            UpdateTimers(player.playerId)
+    for _, player in ipairs(players) do
+        local playerId = player.playerId
+        updateCalculations(playerId)
+        if playerDataTable[playerId].time.global > Constants.UPDATE_RATE then
+            updateTimers(playerId)
         end
-        UpdateTime(player.playerId)
+        updateTime(playerId)
     end
 end
 
-function UpdateTime(playerId)
-    local playerData = playerDataTable[playerId]
-    playerData.time.localTime = playerData.time.localTime + 1
-    playerData.time.globalTime = playerData.time.globalTime + 1
-    SetValue(playerId, "delta", "delta time: " .. Format(tm.os.GetModDeltaTime()))
+-- Time Management
+local function updateTime(playerId)
+    local data = playerDataTable[playerId]
+    if not data then return end
+    
+    data.time.localTime = data.time.localTime + 1
+    data.time.global = data.time.global + 1
+    setUIValue(playerId, "delta", "delta time: " .. string.format("%.3f", tm.os.GetModDeltaTime()))
 end
 
-function UpdateTimers(playerId)
-    local playerData = playerDataTable[playerId]
-    SetValue(playerId, "globaltime", "uptime: " .. math.floor(playerData.time.globalTime/10) .. "s")
-    if playerData.timer.isRunning then
-        SetValue(playerId, "timer", "timer: " .. playerData.time.localTime .. " last: " .. playerData.timer.lastTime)
-    end
-    if not playerData.timer.isRunning then
-        playerData.time.localTime = 0
+local function updateTimers(playerId)
+    local data = playerDataTable[playerId]
+    if not data then return end
+    
+    setUIValue(playerId, "globaltime", "uptime: " .. math.floor(data.time.global/Constants.UPDATE_RATE) .. "s")
+    if data.timer.running then
+        setUIValue(playerId, "timer", string.format("timer: %d last: %d", data.time.localTime, data.timer.last))
+    elseif not data.timer.running then
+        data.time.localTime = 0
     end
 end
 
-function toggleTimer(callbackData)
-    local playerId = callbackData.playerId
-    local playerData = playerDataTable[callbackData.playerId]
-    if not playerData.timer.isRunning then
-        playerData.timer.startTime = playerData.time.globalTime
-        SetValue(playerId, "toggleTimer", "STOP")
-        SetValue(playerId, "dashboard_timer_time", "timer: " .. playerData.timer.currentTime .. " last: " .. playerData.timer.lastTime)
-    end
-    if playerData.timer.isRunning then
-        playerData.timer.stopTime = playerData.time.globalTime
-        playerData.timer.currentTime = playerData.timer.stopTime - playerData.timer.startTime
-        playerData.timer.lastTime = playerData.timer.currentTime
-        SetValue(playerId, "toggleTimer", "START")
-        SetValue(playerId, "dashboard_timer_time", "timer: " .. playerData.timer.currentTime .. " last: " .. playerData.timer.lastTime)
-        playerData.timer.currentTime = 0
-        playerData.time.localLastTime = playerData.time.localTime
-    end
-    playerData.timer.isRunning = not playerData.timer.isRunning
-end
-
----------------------------------------------------------------------------------
----------------------------------------------------------------------------------
-
-function Clear(playerId)
-    tm.playerUI.ClearUI(playerId)
-end
-
-function SetValue(playerId, key, value)
+-- UI Management
+local function setUIValue(playerId, key, value)
     tm.playerUI.SetUIValue(playerId, key, value)
 end
 
-function Label(playerId, key, text)
+local function clearUI(playerId)
+    tm.playerUI.ClearUI(playerId)
+end
+
+local function createButton(playerId, key, text, callback)
+    return tm.playerUI.AddUIButton(playerId, key, text, callback)
+end
+
+local function createLabel(playerId, key, text)
     return tm.playerUI.AddUILabel(playerId, key, text)
 end
 
-function Button(playerId, key, text, func)
-    return tm.playerUI.AddUIButton(playerId, key, text, func)
-end
-
-function Text(playerId, key, text, func)
-    tm.playerUI.AddUIText(playerId, key, text, func)
-end
-
-function Spacer(playerId)
-    return Label(playerId, "spacer", "")
-end
-
-function HomePage(playerId)
-    if type(playerId) ~= "number" then
-        playerId = playerId.playerId
-    end
-    local playerData = playerDataTable[playerId]
-    Clear(playerId)
-    for i, state in ipairs(playerData.states) do
-        if state.value then
-            Label(playerId, state.key, 0)
+-- Pages
+function createHomePage(playerId)
+    local data = playerDataTable[playerId]
+    if not data then return end
+    
+    clearUI(playerId)
+    for state, enabled in pairs(data.states) do
+        if enabled then
+            createLabel(playerId, state, "")
         end
     end
-    Button(playerId, "settings", "toggle readouts", SettingsPage)
-    Button(playerId, "reset", "reset", OnReset)
-    --Button(playerId, "help", "how to read", HelpPage)
+    
+    createButton(playerId, "settings", "toggle readouts", createSettingsPage)
+    createButton(playerId, "reset", "reset", resetMetrics)
+    createButton(playerId, "toggleTimer", data.timer.running and "STOP" or "START", toggleTimer)
 end
 
-function OnReset(callback)
-    local playerData = playerDataTable[callback.playerId]
-    playerData.distance = 0
-end
-
-function HelpPage(playerId)
-    if type(playerId) ~= "number" then
-        playerId = playerId.playerId
+function createSettingsPage(callbackData)
+    local playerId = callbackData.playerId
+    local data = playerDataTable[playerId]
+    if not data then return end
+    
+    clearUI(playerId)
+    for state, enabled in pairs(data.states) do
+        createButton(playerId, "settings_" .. state, 
+            (enabled and Icons.enabled or Icons.disabled) .. "  " .. state, 
+            toggleState)
     end
-    Clear(playerId)
-    Label(playerId, "help position", " -- position")
-    Label(playerId, "help_1", " current world position coordinates")
-    Label(playerId, "help altitude", " -- altitude")
-    Label(playerId, "help_1a", "current height above ground")
-    Label(playerId, "help heading", " -- heading")
-    Label(playerId, "help_2a", "current direction angle")
-    Label(playerId, "help distance", " -- distance")
-    Label(playerId, "help_3a", "current distance travelled")
-    Label(playerId, "help speed", " -- speed")
-    Label(playerId, "help_4a", "current speed")
-    Label(playerId, "help velocity", " -- velocity")
-    Label(playerId, "help_5a", "current velocity vector")
-    Label(playerId, "help vspeed", " -- vSpeed")
-    Label(playerId, "help_6a", "current speed up and down")
-    Label(playerId, "help gforce", " -- gForce")
-    Label(playerId, "help_7a", "current linear acceleration g force")
-    Button(playerId, "back", "back", HomePage)
+    
+    createLabel(playerId, "altitude_offset_label", "altitude offset")
+    tm.playerUI.AddUIText(playerId, "altitude_offset", tostring(data.settings.altitudeOffset), setAltitudeOffset)
+    createButton(playerId, "back", "back", createHomePage)
 end
 
-function CheckActive(state)
-    if state then
-        return Icons.enabled
+-- Callback Handlers
+function toggleState(callback)
+    local data = playerDataTable[callback.playerId]
+    if not data then return end
+    
+    local stateKey = callback.id:match("settings_(.+)")
+    if stateKey and data.states[stateKey] ~= nil then
+        data.states[stateKey] = not data.states[stateKey]
+        setUIValue(callback.playerId, callback.id, 
+            (data.states[stateKey] and Icons.enabled or Icons.disabled) .. "  " .. stateKey)
+    end
+end
+
+function resetMetrics(callback)
+    local data = playerDataTable[callback.playerId]
+    if data then
+        data.metrics.distance = 0
+    end
+end
+
+function setAltitudeOffset(callback)
+    local data = playerDataTable[callback.playerId]
+    if data then
+        local value = tonumber(callback.value)
+        if value then
+            data.settings.altitudeOffset = value
+        end
+    end
+end
+
+function toggleTimer(callback)
+    local data = playerDataTable[callback.playerId]
+    if not data then return end
+    
+    data.timer.running = not data.timer.running
+    if data.timer.running then
+        data.timer.start = data.time.global
+        setUIValue(callback.playerId, "toggleTimer", "STOP")
     else
-        return Icons.disabled
+        data.timer.stop = data.time.global
+        data.timer.current = data.timer.stop - data.timer.start
+        data.timer.last = data.timer.current
+        setUIValue(callback.playerId, "toggleTimer", "START")
+        data.timer.current = 0
+        data.time.localLast = data.time.localTime
     end
 end
 
-function SettingsPage(playerId)
-    if type(playerId) ~= "number" then
-        playerId = playerId.playerId
+-- Calculations
+function updateCalculations(playerId)
+    local data = playerDataTable[playerId]
+    if not data then return end
+    
+    local pos = tm.players.GetPlayerTransform(playerId).GetPosition()
+    data.position.current = pos
+    
+    if data.states.speed or data.states.distance then
+        local delta = calculateDistance(pos, data.position.last)
+        data.metrics.distance = data.metrics.distance + delta
+        data.metrics.speed = delta * Constants.UPDATE_RATE
+        
+        setUIValue(playerId, "distance", "distance: " .. formatDistance(data.metrics.distance))
+        setUIValue(playerId, "speed", "speed: " .. formatSpeed(data.metrics.speed))
+        data.position.last = pos
     end
-    local playerData = playerDataTable[playerId]
-    Clear(playerId)
-    for i, state in ipairs(playerData.states) do
-        Button(playerId, "settings "..state.key, CheckActive(state.value).."  "..state.key, OnToggleState)
+    
+    if data.states.gforce then
+        data.metrics.gForce = (data.metrics.speed - data.metrics.lastSpeed) / Constants.GRAVITY * Constants.UPDATE_RATE
+        setUIValue(playerId, "gforce", "G Force: " .. string.format("%.2f", data.metrics.gForce))
+        data.metrics.lastSpeed = data.metrics.speed
     end
-    Label(playerId, "altitude offset label", "altitude offset")
-    Text(playerId, "altitude offset", playerData.altitudeOffset, OnSetAltitudeOffset)
-    Button(playerId, "back", "back", HomePage)
-end
-
-function OnSetAltitudeOffset(callback)
-    local playerData = playerDataTable[callback.playerId]
-    playerData.altitudeOffset = tonumber(callback.value)
-end
-
-function OnToggleState(callback)
-    local playerData = playerDataTable[callback.playerId]
-    local key = callback.id
-    for i, state in ipairs(playerData.states) do
-        if "settings "..state.key == key then
-            state.value = not state.value
-            SetValue(callback.playerId, key, CheckActive(state.value).."  "..state.key)
-        end
+    
+    if data.states.heading then
+        data.metrics.heading = tm.players.GetPlayerTransform(playerId).GetRotation().y
+        setUIValue(playerId, "heading", "heading: " .. math.floor(data.metrics.heading))
     end
-end
-
-function onResetOdometer(callbackData)
-    local playerData = playerDataTable[callbackData.playerId]
-    playerData.totalDist = playerData.totalDist + playerData.dist
-    playerData.dist = 0
-end
-
-function onButtonToggleTimer(callbackData)
-    toggleTimer(callbackData)
-end
-
----------------------------------------------------------------------------------
----------------------------------------------------------------------------------
-
-function GetPlayerPos(playerId)
-    return tm.players.GetPlayerTransform(playerId).GetPosition()
-end
-
-function GetStateValue(playerId, key)
-    local playerData = playerDataTable[playerId]
-    for i, state in ipairs(playerData.states) do
-        if state.key == key then
-            return state.value
-        end
+    
+    if data.states.altitude then
+        setUIValue(playerId, "altitude", "altitude: " .. math.ceil(pos.y - data.settings.altitudeOffset) .. "m")
+    end
+    
+    if data.states.position then
+        setUIValue(playerId, "position", "position: " .. formatVector(pos))
     end
 end
 
-function TestRunCalculations(playerId)
-    local playerData = playerDataTable[playerId]
-    local speed = 0
-    local playerPos = GetPlayerPos(playerId)
-    if GetStateValue(playerId, "speed") or GetStateValue(playerId, "distance") then
-        playerData.pos = playerPos
-        speed = CalculateSpeed(playerData.lastPos, playerPos)
-        local distance = CalculateDeltaDistance(playerPos, playerData.lastPos)
-        local newDistance = playerData.distance + distance
-        playerData.distance = newDistance
-        playerData.lastPos = playerPos
-        local mph = mpsToMph(speed)
-        local kph = mpsToKph(speed)
-        SetValue(playerId, "distance", "distance: "..FormatDistance(playerData.distance))
-        SetValue(playerId, "speed", "speed: "..FormatSpeed(mph, kph, speed))
-    end
-    if GetStateValue(playerId, "gforce") then
-        local gForce = CalculateGForce(speed, playerData.lastSpeed)
-        playerData.lastSpeed = speed
-        SetValue(playerId, "gforce", "G Force: "..Format(gForce))
-    end
-    if GetStateValue(playerId, "heading") then
-        local heading = CalculateHeading(playerId)
-        playerData.heading = heading
-        SetValue(playerId, "heading", "heading: "..math.floor(heading))
-    end
-    if GetStateValue(playerId, "velocity") then
-        local velocity = CalculateVelocity(speed, playerPos, playerData.lastPos)
-        playerData.velocity = velocity
-        SetValue(playerId, "velocity", "velocity: "..FormatVector(velocity))
-    end
-    if GetStateValue(playerId, "altitude") then
-        SetValue(playerId, "altitude", "altitude: "..math.ceil(playerPos.y - playerData.altitudeOffset).."m")
-    end
-    if GetStateValue(playerId, "position") then
-        SetValue(playerId, "position", "position: "..FormatVector(playerPos))
-    end
-    if GetStateValue(playerId, "vspeed") then
-        SetValue(playerId, "vspeed", "vspeed: "..playerData.velocity.y.." m/s")
-    end
+-- Formatting Helpers
+function formatSpeed(mps)
+    return string.format("%d mph %d kph %.2f m/s", 
+        math.ceil(mps * 2.23693629),
+        math.ceil(mps * 3.6),
+        mps)
 end
 
-function FormatSpeed(mph, kph, mps)
-    return math.ceil(mph) .. "mph " .. math.ceil(kph) .. "kph " .. Format(mps) .. "m/s"
+function formatDistance(meters)
+    return string.format("%.2f mi / %.2f km / %.2f m",
+        meters / 1609.3444,
+        meters / 1000,
+        meters)
 end
 
-function FormatDistance(distance)
-    local mi = mToMi(distance)
-    local km = mToKm(distance)
-    return Format(mi) .. "mi / " .. Format(km) .. "km / " .. Format(distance) .. "m"
+function formatVector(vector)
+    return string.format("x: %d, y: %d, z: %d",
+        math.floor(vector.x),
+        math.floor(vector.y),
+        math.floor(vector.z))
 end
 
-function FormatVector(vector)
-    return 'x: '.. math.floor(vector.x)..', y: '..math.floor(vector.y)..', z: '..math.floor(vector.z)
-end
-
-function Format(number)
-    return string.format("%0.2f", number)
-end
-
-function CalculateDeltaDistance(pos, lastPos)
-    return math.abs(tm.vector3.op_Subtraction(pos, lastPos).Magnitude())
-end
-
-function CalculateSpeed(pos, lastPos)
-    local delta = CalculateDeltaDistance(pos, lastPos)
-    return delta * R
-end
-
-function CalculateGForce(speed, lastSpeed)
-    local delta = speed - lastSpeed
-    return Format(delta) / G * R
-end
-
-function CalculateHeading(playerId)
-    return tm.players.GetPlayerTransform(playerId).GetRotation().y
-end
-
-function CalculateVelocity(speed, pos, lastPos)
-    local d = ((lastPos.x - pos.x)^2 + (lastPos.z - pos.z)^2 + (lastPos.y - pos.y)^2)^0.5
-    local x = speed/d*(lastPos.x - pos.x)
-    local y = speed/d*(lastPos.y - pos.y) * -1
-    local z = speed/d*(lastPos.z - pos.z)
-    return tm.vector3.Create(x, y, z)
-end
-
-function mToMi(meters)
-    return meters / 1609.3444
-end
-
-function mToKm(meters)
-    return meters / 1000
-end
-
-function mpsToMph(mps)
-    return mps * 2.23693629
-end
-
-function mpsToKph(mps)
-    return mps * 3.6
+function calculateDistance(pos1, pos2)
+    return tm.vector3.op_Subtraction(pos1, pos2).Magnitude()
 end
